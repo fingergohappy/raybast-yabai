@@ -82,7 +82,7 @@ const buildListMeta = (windows: IWindow[], isLoading: boolean) => {
   );
 };
 
-export default function Command() {
+export default function Command(Action: Action) {
   const { isLoading: spaceIsLoading, data: spaces } = usePromise(fetchAllSpaces, []);
   const { isLoading: windowsIsLoading, data: windows } = usePromise(fetchAllWindows, []);
   const [filteredSpaces, setSpaces] = useState<ISpace[]>([]);
@@ -131,17 +131,7 @@ export default function Command() {
           subtitle={space.label}
           title={space.index.toString()}
           detail={buildListMeta(filterSpaceWindows(filteredWindows, space.index), windowsIsLoading)}
-          actions={
-            <ActionPanel>
-              <Action
-                title="Focus Space"
-                onAction={() => {
-                  focusSpace(space.index);
-                  closeMainWindow({ clearRootSearch: true, popToRootType: PopToRootType.Immediate });
-                }}
-              />
-            </ActionPanel>
-          }
+          actions={<ActionPanel>{Action}</ActionPanel>}
         />
       ))}
     </List>
