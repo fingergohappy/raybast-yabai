@@ -259,6 +259,12 @@
       "title": "List All Space",
       "description": "List all spaces.",
       "mode": "view"
+    },
+    {
+      "name": "stack-current-window",
+      "title": "Stack Current Window",
+      "description": "Stack the current window.",
+      "mode": "view"
     }
   ],
   "preferences": [
