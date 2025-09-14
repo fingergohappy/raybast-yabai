@@ -1,4 +1,4 @@
-import { Action, ActionPanel, List } from "@raycast/api";
+import { Action, ActionPanel, closeMainWindow, List, PopToRootType } from "@raycast/api";
 import { runYabaiCommand } from "../helpers/scripts";
 import { findAppPath } from "../helpers/app-utils";
 import { usePromise } from "@raycast/utils";
@@ -111,7 +111,13 @@ export default function Command() {
           detail={buildListMeta(filterSpaceWindows(filteredWindows, space.index), windowsIsLoading)}
           actions={
             <ActionPanel>
-              <Action title="Focus Space" onAction={() => focusSpace(space.index)} />
+              <Action
+                title="Focus Space"
+                onAction={() => {
+                  focusSpace(space.index);
+                  closeMainWindow({ clearRootSearch: true, popToRootType: PopToRootType.Immediate });
+                }}
+              />
             </ActionPanel>
           }
         />
