@@ -5,6 +5,7 @@ import { usePromise } from "@raycast/utils";
 import { focusSpace } from "../focus-space";
 import { useState, useEffect } from "react";
 import { ISpace, IWindow } from "../types/yabai";
+import crypto from "crypto";
 
 const fetchAllSpaces = async (): Promise<ISpace[]> => {
   const { stderr, stdout } = await runYabaiCommand(`-m query --spaces`);
@@ -36,24 +37,45 @@ const filterSpaceWindows = (windows: IWindow[] | undefined, spaceIndex: number):
   return windows?.filter((window) => window.space === spaceIndex) || [];
 };
 
+const getRandomKey = () => {
+  return crypto.randomBytes(16).toString("hex");
+};
+type MetaWindow = IWindow & { isEmpty: boolean };
 const buildListMeta = (windows: IWindow[], isLoading: boolean) => {
+  if (windows.length === 0) {
+    return (
+      <List.Item.Detail
+        isLoading={isLoading}
+        metadata={
+          <List.Item.Detail.Metadata>
+            <List.Item.Detail.Metadata.Label title="No windows" text="No windows in this space" />
+          </List.Item.Detail.Metadata>
+        }
+      />
+    );
+  }
+  // 隔一个插入一个新的空值
+  const newWindows = windows?.reduce((acc, window) => {
+    return [...acc, { isEmpty: true } as MetaWindow, { ...window, isEmpty: false }];
+  }, [] as MetaWindow[]);
+
   return (
     <List.Item.Detail
       isLoading={isLoading}
-      key={windows?.[0]?.id}
       metadata={
         <List.Item.Detail.Metadata>
-          {windows?.map((window) => (
-            <>
+          {newWindows?.map((window) =>
+            window.isEmpty ? (
+              <List.Item.Detail.Metadata.Separator key={getRandomKey()} />
+            ) : (
               <List.Item.Detail.Metadata.Label
                 title={window.app}
                 text={window.title}
                 icon={{ fileIcon: window.icon }}
                 key={window.id}
               />
-              <List.Item.Detail.Metadata.Separator />
-            </>
-          ))}
+            ),
+          )}
         </List.Item.Detail.Metadata>
       }
     />
