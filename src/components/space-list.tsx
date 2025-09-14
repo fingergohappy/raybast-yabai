@@ -1,0 +1,121 @@
+import { Action, ActionPanel, List } from "@raycast/api";
+import { runYabaiCommand } from "../helpers/scripts";
+import { findAppPath } from "../helpers/app-utils";
+import { usePromise } from "@raycast/utils";
+import { focusSpace } from "../focus-space";
+import { useState, useEffect } from "react";
+import { ISpace, IWindow } from "../types/yabai";
+
+const fetchAllSpaces = async (): Promise<ISpace[]> => {
+  const { stderr, stdout } = await runYabaiCommand(`-m query --spaces`);
+  if (stderr) {
+    throw new Error(stderr);
+  }
+  return JSON.parse(stdout);
+};
+
+const fetchAllWindows = async (): Promise<IWindow[]> => {
+  const { stderr, stdout } = await runYabaiCommand(`-m query --windows`);
+  if (stderr) {
+    throw new Error(stderr);
+  }
+  const windows = JSON.parse(stdout);
+  return await fetchWindowsInfo(windows);
+};
+
+const fetchWindowsInfo = async (windows: IWindow[]) => {
+  return await Promise.all(
+    windows.map(async (window) => ({
+      ...window,
+      icon: await findAppPath(window.pid),
+    })),
+  );
+};
+
+const filterSpaceWindows = (windows: IWindow[] | undefined, spaceIndex: number): IWindow[] => {
+  return windows?.filter((window) => window.space === spaceIndex) || [];
+};
+
+const buildListMeta = (windows: IWindow[], isLoading: boolean) => {
+  return (
+    <List.Item.Detail
+      isLoading={isLoading}
+      key={windows?.[0]?.id}
+      metadata={
+        <List.Item.Detail.Metadata>
+          {windows?.map((window) => (
+            <>
+              <List.Item.Detail.Metadata.Label
+                title={window.app}
+                text={window.title}
+                icon={{ fileIcon: window.icon }}
+                key={window.id}
+              />
+              <List.Item.Detail.Metadata.Separator />
+            </>
+          ))}
+        </List.Item.Detail.Metadata>
+      }
+    />
+  );
+};
+
+export default function Command() {
+  const { isLoading: spaceIsLoading, data: spaces } = usePromise(fetchAllSpaces, []);
+  const { isLoading: windowsIsLoading, data: windows } = usePromise(fetchAllWindows, []);
+  const [filteredSpaces, setSpaces] = useState<ISpace[]>([]);
+  const [filteredWindows, setFilteredWindows] = useState<IWindow[]>([]);
+  const [searchText, setSearchText] = useState("");
+  useEffect(() => {
+    setFilteredWindows(windows || []);
+    setSpaces(spaces || []);
+  }, [windows, spaces]);
+
+  useEffect(() => {
+    if (!searchText) {
+      setFilteredWindows(windows || []);
+      setSpaces(spaces || []);
+      return;
+    }
+    const filteredWindows = windows
+      ?.filter((window) => !window["is-sticky"])
+      ?.filter(
+        (window) =>
+          window.title.toLowerCase().includes(searchText.toLowerCase()) ||
+          window.app.toLowerCase().includes(searchText.toLowerCase()),
+      );
+    setFilteredWindows(filteredWindows || []);
+    const windowsFilterdSpace = filteredWindows?.map((window) => window.space);
+    const filteredSpaces = spaces?.filter(
+      (space) =>
+        windowsFilterdSpace?.includes(space.index) ||
+        space.label.toLowerCase().includes(searchText.toLowerCase()) ||
+        space.index.toString().includes(searchText),
+    );
+    setSpaces(filteredSpaces || []);
+  }, [searchText]);
+
+  return (
+    <List
+      isShowingDetail
+      selectedItemId={filteredSpaces?.[0]?.id}
+      isLoading={spaceIsLoading}
+      searchBarPlaceholder="Search spaces app or sapce"
+      onSearchTextChange={setSearchText}
+    >
+      {filteredSpaces?.map((space) => (
+        <List.Item
+          key={space.index}
+          subtitle={space.label}
+          title={space.index.toString()}
+          detail={buildListMeta(filterSpaceWindows(filteredWindows, space.index), windowsIsLoading)}
+          actions={
+            <ActionPanel>
+              <Action title="Focus Space" onAction={() => focusSpace(space.index)} />
+            </ActionPanel>
+          }
+        />
+      ))}
+    </List>
+  );
+}

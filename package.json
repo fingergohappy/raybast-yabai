@@ -253,6 +253,12 @@
       "title": "Get Current Window Info",
       "description": "Get the information about the current window.",
       "mode": "view"
+    },
+    {
+      "name": "list-all-space",
+      "title": "List All Space",
+      "description": "List all spaces.",
+      "mode": "view"
     }
   ],
   "preferences": [
