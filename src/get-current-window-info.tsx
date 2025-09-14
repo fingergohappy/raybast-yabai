@@ -11,7 +11,6 @@ const useCurrentWindowInfo = () => {
       if (stderr) {
         throw new Error(stderr);
       }
-      console.log(stdout);
       setWindowInfo(JSON.parse(stdout));
     })();
   }, []);
