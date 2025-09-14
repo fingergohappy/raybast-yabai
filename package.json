@@ -93,6 +93,12 @@
       "mode": "no-view"
     },
     {
+      "name": "switch-layout",
+      "title": "Switch Layout",
+      "description": "Switch to the specified layout for the current space.",
+      "mode": "view"
+    },
+    {
       "name": "layout-bsp",
       "title": "Layout BSP",
       "description": "Switch to BSP layout for the current space.",
