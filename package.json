@@ -93,12 +93,6 @@
       "mode": "no-view"
     },
     {
-      "name": "switch-layout",
-      "title": "Switch Layout",
-      "description": "Switch to the specified layout for the current space.",
-      "mode": "view"
-    },
-    {
       "name": "layout-bsp",
       "title": "Layout BSP",
       "description": "Switch to BSP layout for the current space.",
@@ -247,6 +241,18 @@
       "subtitle": "Yabai",
       "description": "Focus the next window of the current application",
       "mode": "no-view"
+    },
+    {
+      "name": "switch-layout",
+      "title": "Switch Layout",
+      "description": "Switch to the specified layout for the current space.",
+      "mode": "view"
+    },
+    {
+      "name": "get-current-window-info",
+      "title": "Get Current Window Info",
+      "description": "Get the information about the current window.",
+      "mode": "view"
     }
   ],
   "preferences": [
