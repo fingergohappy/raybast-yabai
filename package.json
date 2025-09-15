@@ -265,6 +265,12 @@
       "title": "Stack Current Window",
       "description": "Stack the current window.",
       "mode": "view"
+    },
+    {
+      "name": "move-current-window-to-space",
+      "title": "Move Current Window to Space",
+      "description": "Move the current window to the specified space.",
+      "mode": "view"
     }
   ],
   "preferences": [

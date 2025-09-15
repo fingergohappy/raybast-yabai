@@ -1,8 +1,7 @@
-import { Action, ActionPanel, closeMainWindow, List, PopToRootType } from "@raycast/api";
+import { ActionPanel, List,Action } from "@raycast/api";
 import { runYabaiCommand } from "../helpers/scripts";
 import { findAppPath } from "../helpers/app-utils";
 import { usePromise } from "@raycast/utils";
-import { focusSpace } from "../focus-space";
 import { useState, useEffect } from "react";
 import { ISpace, IWindow } from "../types/yabai";
 import crypto from "crypto";
@@ -82,21 +81,30 @@ const buildListMeta = (windows: IWindow[], isLoading: boolean) => {
   );
 };
 
-export default function Command(Action: Action) {
+export type SpaceListProps = {
+  actions: {
+    title: string;
+    onAction: (space: ISpace) => void;
+  }[],
+  spaceFilter: (spaces: ISpace[]) => ISpace[];
+  windowFilter: (windows: IWindow[]) => IWindow[];
+}
+
+export default function Command(actionHandler: SpaceListProps) {
   const { isLoading: spaceIsLoading, data: spaces } = usePromise(fetchAllSpaces, []);
   const { isLoading: windowsIsLoading, data: windows } = usePromise(fetchAllWindows, []);
   const [filteredSpaces, setSpaces] = useState<ISpace[]>([]);
   const [filteredWindows, setFilteredWindows] = useState<IWindow[]>([]);
   const [searchText, setSearchText] = useState("");
   useEffect(() => {
-    setFilteredWindows(windows || []);
-    setSpaces(spaces || []);
+    setFilteredWindows(actionHandler.windowFilter(windows||[]) || []);
+    setSpaces(actionHandler.spaceFilter(spaces||[]) || []);
   }, [windows, spaces]);
 
   useEffect(() => {
     if (!searchText) {
-      setFilteredWindows(windows || []);
-      setSpaces(spaces || []);
+      setFilteredWindows(actionHandler.windowFilter(windows||[]) || []);
+      setSpaces(actionHandler.spaceFilter(spaces||[]) || []);
       return;
     }
     const filteredWindows = windows
@@ -106,7 +114,7 @@ export default function Command(Action: Action) {
           window.title.toLowerCase().includes(searchText.toLowerCase()) ||
           window.app.toLowerCase().includes(searchText.toLowerCase()),
       );
-    setFilteredWindows(filteredWindows || []);
+    setFilteredWindows(actionHandler.windowFilter(filteredWindows||[]) || []);
     const windowsFilterdSpace = filteredWindows?.map((window) => window.space);
     const filteredSpaces = spaces?.filter(
       (space) =>
@@ -114,7 +122,7 @@ export default function Command(Action: Action) {
         space.label.toLowerCase().includes(searchText.toLowerCase()) ||
         space.index.toString().includes(searchText),
     );
-    setSpaces(filteredSpaces || []);
+    setSpaces(actionHandler.spaceFilter(filteredSpaces||[]) || []);
   }, [searchText]);
 
   return (
@@ -131,7 +139,11 @@ export default function Command(Action: Action) {
           subtitle={space.label}
           title={space.index.toString()}
           detail={buildListMeta(filterSpaceWindows(filteredWindows, space.index), windowsIsLoading)}
-          actions={<ActionPanel>{Action}</ActionPanel>}
+          actions={<ActionPanel>
+            {actionHandler.actions.map((action, index) => (
+              <Action key={index} title={action.title} onAction={() => action.onAction(space)} />
+            ))}
+          </ActionPanel>}
         />
       ))}
     </List>
