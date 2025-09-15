@@ -271,6 +271,20 @@
       "title": "Move Current Window to Space",
       "description": "Move the current window to the specified space.",
       "mode": "view"
+    },
+    {
+      "name": "label-current-space",
+      "title": "Label Current Space",
+      "description": "Label the current space.",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "label",
+          "placeholder": "Label",
+          "type": "text",
+          "required": true
+        }
+      ]
     }
   ],
   "preferences": [
