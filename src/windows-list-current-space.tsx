@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Action, ActionPanel, List, PopToRootType, closeMainWindow } from "@raycast/api";
 import { runYabaiCommand } from "./helpers/scripts";
-import { execaCommand } from "execa";
+import { getAppPathByPid } from "./helpers/app-icon";
 
 interface IWindow {
   id: number;
@@ -33,7 +33,7 @@ const useWindowsList = () => {
         setState({
           list: await Promise.all(
             list.map(async (el) => {
-              el.icon = (await findAppPath(el.pid)) || "";
+              el.icon = (await getAppPathByPid(el.pid)) || "";
               el.title = el.title || el.app;
               return el;
             }),
@@ -52,22 +52,6 @@ const useWindowsList = () => {
 
   return state;
 };
-async function findAppPath(pid: number): Promise<string> {
-  const { stdout, stderr } = await execaCommand(`/usr/sbin/lsof -p ${pid} | grep txt | grep -v DEL | head -n 1 `, {
-    shell: true,
-  });
-  if (stderr) {
-    console.error(stderr);
-    return "";
-  }
-  const beginIndex = stdout.indexOf("/");
-  const appIndex = stdout.indexOf(".app");
-  if (appIndex === -1) {
-    return stdout;
-  }
-  return stdout.substring(beginIndex, appIndex + 4);
-}
-
 export function selectWindow(id: number) {
   runYabaiCommand(`-m window --focus ${id}`);
   closeMainWindow({ clearRootSearch: true, popToRootType: PopToRootType.Immediate });

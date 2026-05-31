@@ -11,15 +11,24 @@ const destorySpace = async (space: ISpace) => {
 };
 
 export default function Command() {
-  return <SpaceList actions={[{
-    title: "focus",
-    onAction: (space: ISpace) => {
-      focusSpace(space.index);
-    },
-  }, {
-    title: "destroy",
-    onAction: (space: ISpace) => {
-      destorySpace(space);
-    },
-  }]} spaceFilter={(spaces: ISpace[]) => spaces} windowFilter={(windows: IWindow[]) => windows} />;
+  return (
+    <SpaceList
+      actions={[
+        {
+          title: "focus",
+          onAction: (space: ISpace) => {
+            focusSpace(space.index);
+          },
+        },
+        {
+          title: "destroy",
+          onAction: (space: ISpace) => {
+            destorySpace(space);
+          },
+        },
+      ]}
+      spaceFilter={(spaces: ISpace[]) => spaces}
+      windowFilter={(windows: IWindow[]) => windows}
+    />
+  );
 }

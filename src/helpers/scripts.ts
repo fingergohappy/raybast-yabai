@@ -1,10 +1,12 @@
 import { getPreferenceValues, showToast, Toast } from "@raycast/api";
-import { execaCommand } from "execa";
-import { userInfo } from "os";
+import { execa } from "execa";
+import { homedir, userInfo } from "os";
 import { cpus } from "os";
 import fs from "fs";
 
-const userEnv = `env USER=${userInfo().username}`;
+const userEnv = {
+  USER: userInfo().username,
+};
 
 export const runYabaiCommand = async (command: string, opt?: { shell?: boolean }) => {
   const preferences = getPreferenceValues<Preferences>();
@@ -20,5 +22,14 @@ export const runYabaiCommand = async (command: string, opt?: { shell?: boolean }
     return { stdout: "", stderr: "Yabai executable not found" };
   }
 
-  return await execaCommand([userEnv, yabaiPath, command].join(" "), opt);
+  const normalizedCommand = command.trim();
+  const args = normalizedCommand.split(/\s+/).filter(Boolean);
+  return await execa(yabaiPath, args, {
+    ...opt,
+    env: {
+      ...process.env,
+      ...userEnv,
+      HOME: homedir(),
+    },
+  });
 };

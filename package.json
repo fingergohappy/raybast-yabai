@@ -94,7 +94,7 @@
     },
     {
       "name": "layout-bsp",
-      "title": "Layout BSP",
+      "title": "Layout Bsp",
       "description": "Switch to BSP layout for the current space.",
       "mode": "no-view"
     },
@@ -236,6 +236,20 @@
       ]
     },
     {
+      "name": "unbind-window-shortcuts",
+      "title": "Unbind Window Shortcuts",
+      "subtitle": "Yabai",
+      "description": "Unbind active window shortcut bindings",
+      "mode": "view"
+    },
+    {
+      "name": "bind-current-window-shortcut",
+      "title": "Bind Current Window Shortcut",
+      "subtitle": "Yabai",
+      "description": "Bind a shortcut to the currently focused window",
+      "mode": "view"
+    },
+    {
       "name": "focus-next-same-app",
       "title": "Focus Next Window of Same App",
       "subtitle": "Yabai",
@@ -253,6 +267,21 @@
       "title": "Get Current Window Info",
       "description": "Get the information about the current window.",
       "mode": "view"
+    },
+    {
+      "name": "modify-current-window-properties",
+      "title": "Modify Current Window Properties",
+      "subtitle": "Yabai",
+      "description": "Modify yabai properties for the current window.",
+      "mode": "view",
+      "keywords": [
+        "window",
+        "property",
+        "properties",
+        "float",
+        "sticky",
+        "opacity"
+      ]
     },
     {
       "name": "list-all-space",
@@ -313,7 +342,7 @@
   },
   "scripts": {
     "build": "ray build -e dist",
-    "dev": "ray develop",
+    "dev": "NODE_OPTIONS=--no-deprecation ray develop",
     "fix-lint": "ray lint --fix",
     "lint": "ray lint",
     "publish": "npx @raycast/api@latest publish"

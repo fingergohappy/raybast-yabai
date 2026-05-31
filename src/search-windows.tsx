@@ -1,31 +1,12 @@
 import { ActionPanel, Action, List, showToast, Toast } from "@raycast/api";
 import { useState, useEffect, useMemo } from "react";
 import { runYabaiCommand } from "./helpers/scripts";
-import { execaCommand } from "execa";
 import { sortWindows, BaseWindow } from "./helpers/window-utils";
+import { getAppPathByPid } from "./helpers/app-icon";
 import * as pinyin from "tiny-pinyin";
 
 interface Window extends BaseWindow {
   icon?: string;
-}
-
-async function findAppPath(pid: number): Promise<string> {
-  if (!Number.isInteger(pid) || pid <= 0) {
-    throw new Error("Invalid process ID");
-  }
-  const { stdout, stderr } = await execaCommand(`/usr/sbin/lsof -p ${pid} | grep txt | grep -v DEL | head -n 1 `, {
-    shell: true,
-  });
-  if (stderr) {
-    console.error(stderr);
-    return "";
-  }
-  const beginIndex = stdout.indexOf("/");
-  const appIndex = stdout.indexOf(".app");
-  if (appIndex === -1) {
-    return stdout;
-  }
-  return stdout.substring(beginIndex, appIndex + 4);
 }
 
 function getPinyin(text: string): string {
@@ -99,7 +80,7 @@ export default function Command() {
         const windowsWithIcons = await Promise.all(
           sortedWindows.map(async (window) => ({
             ...window,
-            icon: await findAppPath(window.pid),
+            icon: await getAppPathByPid(window.pid),
           })),
         );
         timeLog("Add icons", iconStartTime);

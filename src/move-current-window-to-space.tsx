@@ -4,7 +4,7 @@ import SpaceList from "./components/space-list";
 import { IWindow, ISpace } from "./types/yabai";
 import { closeMainWindow, PopToRootType, showHUD } from "@raycast/api";
 
-const fetchCurrentWindow = async () : Promise<IWindow> => {
+const fetchCurrentWindow = async (): Promise<IWindow> => {
   const { stderr, stdout } = await runYabaiCommand(`-m query --windows --window`);
   if (stderr) {
     throw new Error(stderr);
@@ -35,26 +35,41 @@ const moveAndFocusSpace = async (window: IWindow | undefined, spaceId: number) =
   closeMainWindow({ clearRootSearch: true, popToRootType: PopToRootType.Immediate });
 };
 
+const markCurrentWindowSpace = (spaces: ISpace[], currentSpace: number | undefined): ISpace[] => {
+  return spaces.map((space) => {
+    if (space.index !== currentSpace) {
+      return space;
+    }
+
+    return {
+      ...space,
+      label: space.label ? `${space.label} (Current Window Space)` : "Current Window Space",
+    };
+  });
+};
+
 export default function Command() {
   const { data } = usePromise(fetchCurrentWindow);
 
   return (
     <SpaceList
-      actions={[{
-        title: "move",
-        onAction: (space: ISpace) => {
-          moveCurrentWindowToSpace(data , space.index);
-        }
-      },
-      {
-        title: "move and focus",
-        onAction: (space: ISpace) => {
-          moveAndFocusSpace(data , space.index);
-        }
-      },
-    ]}
-    spaceFilter={(spaces: ISpace[]) => spaces.filter((space) => space.index !== data?.space)}
-    windowFilter={(windows: IWindow[]) => windows}
+      key={data?.space ?? "loading-current-window"}
+      actions={[
+        {
+          title: "move",
+          onAction: (space: ISpace) => {
+            moveCurrentWindowToSpace(data, space.index);
+          },
+        },
+        {
+          title: "move and focus",
+          onAction: (space: ISpace) => {
+            moveAndFocusSpace(data, space.index);
+          },
+        },
+      ]}
+      spaceFilter={(spaces: ISpace[]) => markCurrentWindowSpace(spaces, data?.space)}
+      windowFilter={(windows: IWindow[]) => windows}
     />
   );
 }
