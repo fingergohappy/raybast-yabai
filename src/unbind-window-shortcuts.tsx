@@ -1,9 +1,10 @@
 import { Action, ActionPanel, List, showToast, Toast } from "@raycast/api";
-import { execa, execaCommand } from "execa";
+import { execa } from "execa";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { homedir, userInfo } from "os";
 import { join } from "path";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { getSkhdPath } from "./helpers/skhd";
 import { runYabaiCommand } from "./helpers/scripts";
 import { sortWindows, BaseWindow } from "./helpers/window-utils";
 import { getAppPathByPid } from "./helpers/app-icon";
@@ -245,22 +246,6 @@ async function cleanMissingWindowShortcuts(existingWindowIds: ReadonlySet<number
 }
 
 /**
- * 获取系统可执行 skhd 的路径。
- * @returns 找到时返回路径字符串，否则返回 undefined
- */
-async function getSkhdPath() {
-  try {
-    // command -v 返回的 skhd 可执行文件路径。
-    const { stdout } = await execaCommand("command -v skhd");
-    // 去除空白后的候选路径。
-    const candidate = stdout.trim();
-    return candidate || undefined;
-  } catch (_error) {
-    return undefined;
-  }
-}
-
-/**
  * 使用标准环境变量执行 skhd 命令。
  * @param args skhd 命令参数
  * @returns execa 执行结果 Promise
@@ -270,7 +255,7 @@ async function executeSkhd(args: string[]) {
   const skhdPath = await getSkhdPath();
   if (!skhdPath) {
     // 缺少 skhd 时抛出的明确错误。
-    const error = new Error("skhd executable not found in PATH");
+    const error = new Error("skhd executable not found");
     console.error(LOG_PREFIX, error.message);
     throw error;
   }

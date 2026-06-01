@@ -323,6 +323,13 @@
       "required": false,
       "type": "textfield",
       "description": "Location to the Yabai installation (Defaults to `/opt/homebrew/bin/yabai` on M1 Macs, and `/usr/local/bin/yabai` otherwise)"
+    },
+    {
+      "name": "skhdPath",
+      "title": "skhd installation path",
+      "required": false,
+      "type": "textfield",
+      "description": "Location to the skhd installation (Defaults to `/opt/homebrew/bin/skhd` on M1 Macs, and `/usr/local/bin/skhd` otherwise)"
     }
   ],
   "dependencies": {

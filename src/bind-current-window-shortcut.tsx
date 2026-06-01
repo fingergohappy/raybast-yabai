@@ -11,11 +11,12 @@ import {
   Toast,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
-import { execa, execaCommand } from "execa";
+import { execa } from "execa";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { homedir, userInfo } from "os";
 import { join } from "path";
 import { useEffect, useState } from "react";
+import { getSkhdPath } from "./helpers/skhd";
 import { runYabaiCommand } from "./helpers/scripts";
 import { IWindow } from "./types/yabai";
 
@@ -60,20 +61,10 @@ async function loadSkhdWindowShortcuts(): Promise<WindowShortcutBinding[]> {
   }
 }
 
-async function getSkhdPath() {
-  try {
-    const { stdout } = await execaCommand("command -v skhd");
-    const candidate = stdout.trim();
-    return candidate || undefined;
-  } catch (_error) {
-    return undefined;
-  }
-}
-
 async function executeSkhd(args: string[]) {
   const skhdPath = await getSkhdPath();
   if (!skhdPath) {
-    throw new Error("skhd executable not found in PATH");
+    throw new Error("skhd executable not found");
   }
 
   return execa(skhdPath, args, {
