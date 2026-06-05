@@ -11,105 +11,36 @@ import {
   Toast,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
-import { execa } from "execa";
-import { mkdir, readFile, writeFile } from "fs/promises";
-import { homedir, userInfo } from "os";
-import { join } from "path";
 import { useEffect, useState } from "react";
-import { getSkhdPath } from "./helpers/skhd";
 import { runYabaiCommand } from "./helpers/scripts";
+import {
+  formatWindowShortcut,
+  isValidWindowShortcut,
+  loadWindowShortcutStore,
+  loadWindowShortcuts,
+  normalizeShortcutInput,
+  saveWindowShortcutStore,
+  shortcutHasPrefixConflict,
+} from "./helpers/window-shortcuts";
 import { IWindow } from "./types/yabai";
 
-interface WindowShortcutBinding {
+interface ShortcutConflict {
   shortcut: string;
   windowId: number;
 }
 
-const SKHD_CONFIG_DIR = join(homedir(), ".config", "skhd");
-const SKHD_SHORTCUT_FILE = join(SKHD_CONFIG_DIR, "window_shortcut_skhdrc");
-const FOCUS_WINDOW_SCRIPT = "~/.config/skhd/focus_window.sh";
-const SKHD_MODIFIER = "alt";
-
-function normalizeShortcut(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z]/g, "")
-    .slice(0, 1);
-}
-
-function parseWindowShortcutLine(line: string): WindowShortcutBinding | null {
-  const match = line.trim().match(/^alt\s*-\s*([a-zA-Z])\s*:\s*.*\bfocus_window\.sh\s+(\d+)\s*$/);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    shortcut: match[1].toLowerCase(),
-    windowId: Number(match[2]),
-  };
-}
-
-async function loadSkhdWindowShortcuts(): Promise<WindowShortcutBinding[]> {
-  try {
-    const fileContent = await readFile(SKHD_SHORTCUT_FILE, "utf8");
-    return fileContent
-      .split(/\r?\n/)
-      .map((line) => parseWindowShortcutLine(line))
-      .filter((item): item is WindowShortcutBinding => item !== null);
-  } catch (_error) {
-    return [];
-  }
-}
-
-async function executeSkhd(args: string[]) {
-  const skhdPath = await getSkhdPath();
-  if (!skhdPath) {
-    throw new Error("skhd executable not found");
-  }
-
-  return execa(skhdPath, args, {
-    env: {
-      ...process.env,
-      USER: userInfo().username,
-      HOME: homedir(),
-    },
-  });
-}
-
-async function reloadSkhd() {
-  try {
-    await executeSkhd(["--reload"]);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("pid-file")) {
-      await executeSkhd(["--restart-service"]);
-      return;
+async function bindWindowShortcut(windowId: number, shortcut: string) {
+  const normalizedShortcut = normalizeShortcutInput(shortcut);
+  const { bindings, unmanagedLines } = await loadWindowShortcutStore();
+  const keepBindings = bindings.filter((binding) => {
+    if (binding.windowId === windowId) {
+      return false;
     }
 
-    throw error;
-  }
-}
+    return !shortcutHasPrefixConflict(normalizedShortcut, binding.shortcut);
+  });
 
-async function bindWindowShortcut(windowId: number, shortcut: string) {
-  const normalizedShortcut = normalizeShortcut(shortcut);
-  await mkdir(SKHD_CONFIG_DIR, { recursive: true });
-  const currentContent = await readFile(SKHD_SHORTCUT_FILE, "utf8").catch(() => "");
-  const bindingLine = `${SKHD_MODIFIER} - ${normalizedShortcut} : ${FOCUS_WINDOW_SCRIPT} ${windowId}`;
-  const keepLines = currentContent
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0)
-    .filter((line) => {
-      const parsed = parseWindowShortcutLine(line);
-      if (!parsed) {
-        return true;
-      }
-
-      return parsed.shortcut !== normalizedShortcut && parsed.windowId !== windowId;
-    });
-
-  keepLines.push(bindingLine);
-  await writeFile(SKHD_SHORTCUT_FILE, `${keepLines.join("\n")}\n`, "utf8");
-  await reloadSkhd();
+  await saveWindowShortcutStore([...keepBindings, { shortcut: normalizedShortcut, windowId }], unmanagedLines);
 }
 
 async function fetchCurrentWindow(): Promise<IWindow> {
@@ -130,24 +61,65 @@ async function fetchWindows(): Promise<IWindow[]> {
   return JSON.parse(stdout) as IWindow[];
 }
 
-async function checkShortcutConflict(windowId: number, shortcut: string, existingWindowIds: ReadonlySet<number>) {
-  const bindings = await loadSkhdWindowShortcuts();
-  const conflict = bindings.find((item) => {
-    if (item.shortcut !== shortcut) {
+async function checkShortcutConflicts(
+  windowId: number,
+  shortcut: string,
+  existingWindowIds: ReadonlySet<number>,
+): Promise<ShortcutConflict[]> {
+  const bindings = await loadWindowShortcuts();
+  return bindings
+    .filter((item) => {
+      if (!shortcutHasPrefixConflict(shortcut, item.shortcut)) {
+        return false;
+      }
+
+      return item.windowId === windowId || existingWindowIds.has(item.windowId);
+    })
+    .map((item) => ({
+      shortcut: item.shortcut,
+      windowId: item.windowId,
+    }));
+}
+
+function isSameWindowSameShortcut(conflicts: ShortcutConflict[], windowId: number, shortcut: string) {
+  return conflicts.length === 1 && conflicts[0].windowId === windowId && conflicts[0].shortcut === shortcut;
+}
+
+function getConflictSummary(conflicts: ShortcutConflict[], windows: IWindow[]) {
+  return conflicts
+    .map(
+      (conflict) => `${formatWindowShortcut(conflict.shortcut)} -> ${getWindowLabelById(conflict.windowId, windows)}`,
+    )
+    .join("；");
+}
+
+async function confirmShortcutReplacement(shortcut: string, conflicts: ShortcutConflict[], windows: IWindow[]) {
+  return confirmAlert({
+    title: "Shortcut already bound",
+    message: `${formatWindowShortcut(shortcut)} 会覆盖 ${getConflictSummary(conflicts, windows)}，是否继续？`,
+    primaryAction: {
+      title: "替换",
+      style: Alert.ActionStyle.Destructive,
+    },
+    dismissAction: {
+      title: "取消",
+      style: Alert.ActionStyle.Cancel,
+    },
+  });
+}
+
+function getExistingActiveConflicts(
+  conflicts: ShortcutConflict[],
+  shortcut: string,
+  currentWindowId: number,
+): ShortcutConflict[] {
+  return conflicts.filter((conflict) => {
+    if (conflict.shortcut !== shortcut) {
       return false;
     }
 
-    return item.windowId === windowId || existingWindowIds.has(item.windowId);
+    return conflict.windowId !== currentWindowId;
   });
-  if (!conflict) {
-    return { exists: false, ownerId: undefined, sameWindow: false };
-  }
-
-  return {
-    exists: true,
-    ownerId: conflict.windowId,
-    sameWindow: conflict.windowId === windowId,
-  };
 }
 
 function getWindowLabelById(windowId: number, windows: IWindow[]) {
@@ -164,24 +136,6 @@ function getWindowLabelById(windowId: number, windows: IWindow[]) {
   return `${window.app} (${window.title})`;
 }
 
-async function confirmShortcutReplacement(shortcut: string, ownerLabel: string) {
-  return new Promise<boolean>((resolve) => {
-    confirmAlert({
-      title: "Shortcut already bound",
-      message: `alt+${shortcut} 已经绑定到 ${ownerLabel}，是否替换该绑定？`,
-      primaryAction: {
-        title: "替换",
-        style: Alert.ActionStyle.Destructive,
-        onAction: () => resolve(true),
-      },
-      dismissAction: {
-        title: "取消",
-        onAction: () => resolve(false),
-      },
-    });
-  });
-}
-
 export default function Command() {
   const [shortcut, setShortcut] = useState("");
   const [existingShortcut, setExistingShortcut] = useState<string>();
@@ -195,7 +149,7 @@ export default function Command() {
     let isCancelled = false;
 
     async function loadExistingShortcut() {
-      const bindings = await loadSkhdWindowShortcuts();
+      const bindings = await loadWindowShortcuts();
       if (isCancelled || !currentWindow) {
         return;
       }
@@ -228,61 +182,65 @@ export default function Command() {
       return;
     }
 
-    const pressedKey = normalizeShortcut(shortcut);
-    if (!/^[a-z]$/.test(pressedKey)) {
-      await showToast(Toast.Style.Failure, "Invalid shortcut", "Please input a single letter (a-z)");
+    const pressedKey = normalizeShortcutInput(shortcut);
+    if (!isValidWindowShortcut(pressedKey)) {
+      await showToast(Toast.Style.Failure, "Invalid shortcut", "Please input one or two letters (a-z)");
       return;
     }
 
     try {
       const allWindows = await fetchWindows();
       const existingWindowIds = new Set(allWindows.map((window) => window.id));
-      const conflict = await checkShortcutConflict(currentWindow.id, pressedKey, existingWindowIds);
-      if (conflict.exists) {
-        if (conflict.sameWindow) {
-          await showSuccess(`alt+${pressedKey} is already bound to this window`);
+      const conflicts = await checkShortcutConflicts(currentWindow.id, pressedKey, existingWindowIds);
+      if (conflicts.length > 0) {
+        if (isSameWindowSameShortcut(conflicts, currentWindow.id, pressedKey)) {
+          await showSuccess(`${formatWindowShortcut(pressedKey)} is already bound to this window`);
           return;
         }
 
-        const ownerLabel =
-          typeof conflict.ownerId === "number" ? getWindowLabelById(conflict.ownerId, allWindows) : "unknown window";
-        const shouldReplace = await confirmShortcutReplacement(pressedKey, ownerLabel);
+        const replacementConflicts =
+          getExistingActiveConflicts(conflicts, pressedKey, currentWindow.id).length > 0
+            ? conflicts
+            : conflicts.filter(
+                (conflict) => conflict.shortcut !== pressedKey || conflict.windowId !== currentWindow.id,
+              );
+        const shouldReplace = await confirmShortcutReplacement(pressedKey, replacementConflicts, allWindows);
         if (!shouldReplace) {
           return;
         }
       }
 
       await bindWindowShortcut(currentWindow.id, pressedKey);
-      await showSuccess(`${currentWindow.app}: ${currentWindow.title} -> alt+${pressedKey}`);
+      await showSuccess(`${currentWindow.app}: ${currentWindow.title} -> ${formatWindowShortcut(pressedKey)}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       await showToast(Toast.Style.Failure, "Failed to bind shortcut", message);
     }
   }
 
-  const pressedKey = normalizeShortcut(shortcut);
+  const pressedKey = normalizeShortcutInput(shortcut);
   const title =
     existingShortcut && pressedKey === existingShortcut
-      ? `Current binding: alt+${existingShortcut}`
+      ? `Current binding: ${formatWindowShortcut(existingShortcut)}`
       : pressedKey
-        ? `Bind alt+${pressedKey}`
-        : "Input a letter to bind";
+        ? `Bind ${formatWindowShortcut(pressedKey)}`
+        : "Input one or two letters to bind";
   const windowTitle = currentWindow?.title ? `${currentWindow.app} (${currentWindow.title})` : currentWindow?.app;
 
   return (
     <List
       isLoading={isLoading}
       navigationTitle={`Bind Shortcut for ${currentWindow?.app ?? "Current Window"}`}
-      searchBarPlaceholder="输入一个字母（a-z），按 Enter 绑定为 alt+该字母"
+      searchBarPlaceholder="输入 1-2 个字母（例如 a 或 aa），按 Enter 绑定"
       searchText={shortcut}
-      onSearchTextChange={(value) => setShortcut(normalizeShortcut(value))}
+      onSearchTextChange={(value) => setShortcut(normalizeShortcutInput(value))}
       filtering={false}
     >
       <List.Item
         id="bind-shortcut"
         title={title}
         subtitle={windowTitle}
-        accessories={existingShortcut ? [{ text: `Current: alt+${existingShortcut}` }] : []}
+        accessories={existingShortcut ? [{ text: `Current: ${formatWindowShortcut(existingShortcut)}` }] : []}
         actions={
           <ActionPanel>
             <Action title="Bind Shortcut" onAction={handleSubmit} />

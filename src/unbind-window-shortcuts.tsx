@@ -1,13 +1,15 @@
 import { Action, ActionPanel, List, showToast, Toast } from "@raycast/api";
-import { execa } from "execa";
-import { mkdir, readFile, writeFile } from "fs/promises";
-import { homedir, userInfo } from "os";
-import { join } from "path";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { getSkhdPath } from "./helpers/skhd";
 import { runYabaiCommand } from "./helpers/scripts";
 import { sortWindows, BaseWindow } from "./helpers/window-utils";
 import { getAppPathByPid } from "./helpers/app-icon";
+import {
+  clearWindowShortcuts,
+  formatWindowShortcut,
+  loadWindowShortcutStore,
+  saveWindowShortcutStore,
+} from "./helpers/window-shortcuts";
+import type { WindowShortcutBinding } from "./helpers/window-shortcuts";
 
 // yabai 返回的布尔值可能是布尔类型，也可能是数字 0/1。
 type YabaiBool = boolean | 0 | 1;
@@ -16,18 +18,10 @@ type YabaiBool = boolean | 0 | 1;
 interface Window extends BaseWindow {
   // 应用图标路径，用于 Raycast 列表展示。
   icon?: string;
-  // 已绑定的单字母快捷键。
+  // 已绑定的窗口快捷键。
   shortcut?: string;
   // yabai 返回的窗口浮动状态。
   "is-floating"?: YabaiBool;
-}
-
-// skhd 配置文件中的单条窗口快捷键绑定。
-interface WindowShortcutBinding {
-  // 绑定的单字母快捷键。
-  shortcut: string;
-  // 绑定目标窗口 id。
-  windowId: number;
 }
 
 interface ActiveWindowShortcuts {
@@ -152,30 +146,8 @@ async function getSpaceToPreviewWindowIn(): Promise<number | undefined> {
   return toValidPositiveInt(focusedWindow.space);
 }
 
-// skhd 配置目录路径。
-const SKHD_CONFIG_DIR = join(homedir(), ".config", "skhd");
-// 本命令维护的窗口快捷键配置文件路径。
-const SKHD_SHORTCUT_FILE = join(SKHD_CONFIG_DIR, "window_shortcut_skhdrc");
 // 日志前缀，便于从 Raycast 日志中区分命令来源。
 const LOG_PREFIX = "[unbind-window-shortcuts]";
-
-/**
- * 从一行 skhd 配置文本中解析窗口快捷键绑定。
- * @param line 配置文件中的单行文本
- * @returns 解析成功返回绑定信息，不匹配则返回 null
- */
-function parseWindowShortcutLine(line: string): WindowShortcutBinding | null {
-  // 匹配形如 "alt - a : ~/.config/skhd/focus_window.sh 123" 的绑定行。
-  const match = line.trim().match(/^alt\s*-\s*([a-zA-Z])\s*:\s*.*\bfocus_window\.sh\s+(\d+)\s*$/);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    shortcut: match[1].toLowerCase(),
-    windowId: Number(match[2]),
-  };
-}
 
 /**
  * 将绑定数组转换成按 windowId 索引的快捷键映射。
@@ -200,43 +172,14 @@ function createShortcutMap(bindings: WindowShortcutBinding[]) {
  */
 async function cleanMissingWindowShortcuts(existingWindowIds: ReadonlySet<number>): Promise<ActiveWindowShortcuts> {
   // 当前 skhd 快捷键配置文件内容；文件不存在时视为没有绑定。
-  const fileContent = await readFile(SKHD_SHORTCUT_FILE, "utf8").catch(() => undefined);
-  if (typeof fileContent !== "string") {
-    return {
-      shortcuts: new Map<number, string>(),
-      removedCount: 0,
-    };
-  }
-
-  // 清理后保留的配置行。
-  const keepLines: string[] = [];
+  const { bindings, unmanagedLines } = await loadWindowShortcutStore();
   // 清理后仍然有效的绑定。
-  const activeBindings: WindowShortcutBinding[] = [];
+  const activeBindings = bindings.filter((binding) => existingWindowIds.has(binding.windowId));
   // 被删除的失效绑定数量。
-  let removedCount = 0;
-
-  fileContent
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0)
-    .forEach((line) => {
-      const parsed = parseWindowShortcutLine(line);
-      if (!parsed) {
-        keepLines.push(line);
-        return;
-      }
-
-      if (existingWindowIds.has(parsed.windowId)) {
-        keepLines.push(line);
-        activeBindings.push(parsed);
-        return;
-      }
-
-      removedCount += 1;
-    });
+  const removedCount = bindings.length - activeBindings.length;
 
   if (removedCount > 0) {
-    await writeFile(SKHD_SHORTCUT_FILE, `${keepLines.join("\n")}${keepLines.length > 0 ? "\n" : ""}`, "utf8");
-    await reloadSkhd();
+    await saveWindowShortcutStore(activeBindings, unmanagedLines);
   }
 
   return {
@@ -246,82 +189,23 @@ async function cleanMissingWindowShortcuts(existingWindowIds: ReadonlySet<number
 }
 
 /**
- * 使用标准环境变量执行 skhd 命令。
- * @param args skhd 命令参数
- * @returns execa 执行结果 Promise
- */
-async function executeSkhd(args: string[]) {
-  // 当前环境中可用的 skhd 可执行文件路径。
-  const skhdPath = await getSkhdPath();
-  if (!skhdPath) {
-    // 缺少 skhd 时抛出的明确错误。
-    const error = new Error("skhd executable not found");
-    console.error(LOG_PREFIX, error.message);
-    throw error;
-  }
-
-  console.log(`${LOG_PREFIX} executeSkhd: ${skhdPath} ${args.join(" ")}`);
-  return execa(skhdPath, args, {
-    env: {
-      ...process.env,
-      USER: userInfo().username,
-      HOME: homedir(),
-    },
-  });
-}
-
-/**
- * 重新加载 skhd，遇到 pid-file 相关错误时尝试重启服务降级处理。
- */
-async function reloadSkhd() {
-  try {
-    await executeSkhd(["--reload"]);
-  } catch (error) {
-    // skhd 失败信息，用于判断是否需要重启服务兜底。
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`${LOG_PREFIX} reload --reload failed`, message);
-
-    if (message.includes("pid-file")) {
-      console.log(`${LOG_PREFIX} fallback to --restart-service`);
-      await executeSkhd(["--restart-service"]);
-      return;
-    }
-
-    throw error;
-  }
-}
-
-/**
  * 删除某个窗口的已有快捷键绑定并写回配置文件。
  * @param windowId 目标窗口 id
  */
 async function removeShortcutForWindow(windowId: number) {
-  // 删除前的配置文件内容；文件不存在时视为空内容。
-  const currentContent = await readFile(SKHD_SHORTCUT_FILE, "utf8").catch(() => "");
-  // 删除目标窗口绑定后剩余的配置行。
-  const remaining = currentContent
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0)
-    .filter((line) => {
-      // 当前行解析出的窗口绑定信息。
-      const parsed = parseWindowShortcutLine(line);
-      if (!parsed) {
-        return true;
-      }
-      return parsed.windowId !== windowId;
-    });
+  // 删除前的结构化绑定；文件不存在时视为空内容。
+  const { bindings, unmanagedLines } = await loadWindowShortcutStore();
+  // 删除目标窗口绑定后剩余的绑定。
+  const remaining = bindings.filter((binding) => binding.windowId !== windowId);
 
-  await writeFile(SKHD_SHORTCUT_FILE, `${remaining.join("\n")}${remaining.length > 0 ? "\n" : ""}`, "utf8");
-  await reloadSkhd();
+  await saveWindowShortcutStore(remaining, unmanagedLines);
 }
 
 /**
  * 清空窗口绑定配置文件并触发 skhd 重载。
  */
 async function clearAllWindowShortcuts() {
-  await mkdir(SKHD_CONFIG_DIR, { recursive: true });
-  await writeFile(SKHD_SHORTCUT_FILE, "", "utf8");
-  await reloadSkhd();
+  await clearWindowShortcuts();
 }
 
 /**
@@ -685,7 +569,7 @@ export default function Command() {
           subtitle={window.title}
           accessories={[
             { text: `Space ${window.space}` },
-            ...(window.shortcut ? [{ text: `Shortcut alt+${window.shortcut}` }] : []),
+            ...(window.shortcut ? [{ text: `Shortcut ${formatWindowShortcut(window.shortcut)}` }] : []),
           ]}
           actions={
             <ActionPanel>
