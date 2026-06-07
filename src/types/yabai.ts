@@ -2,6 +2,8 @@ export interface ISpace {
   index: number;
   id: string;
   label: string;
+  display?: number;
+  "has-focus"?: boolean;
 }
 
 export interface IWindow {

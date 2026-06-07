@@ -70,6 +70,7 @@ export default function Command() {
       ]}
       spaceFilter={(spaces: ISpace[]) => markCurrentWindowSpace(spaces, data?.space)}
       windowFilter={(windows: IWindow[]) => windows}
+      selectedSpaceIndex={data?.space}
     />
   );
 }
